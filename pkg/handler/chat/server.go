@@ -37,22 +37,40 @@ func New(logger log.Handler, chatInteractor chat.Interactor) protoconnect.ChatSe
 
 func (s *server) CreateRoom(ctx context.Context, req *connect.Request[proto.CreateRoomRequest]) (*connect.Response[proto.CreateRoomResponse], error) {
 	// TODO: s.chatInteracter.CreateRoomを実行する
+	room, err := s.chatInteractor.CreateRoom(ctx, req.Msg.GetName())
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "create room error", "err", err)
+		return nil, err
+	}
 	return connect.NewResponse(&proto.CreateRoomResponse{
 		// TODO: Id: room.IDを返却する
+		Id: room.ID,
 	}), nil
 }
 
 func (s *server) GetRoom(ctx context.Context, req *connect.Request[proto.GetRoomRequest]) (*connect.Response[proto.GetRoomResponse], error) {
 	// TODO: s.chatInteracter.GetRoomを実行する
+	room, err := s.chatInteractor.GetRoom(ctx, req.Msg.GetId())
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "get room error", "err", err)
+		return nil, err
+	}
 	return connect.NewResponse(&proto.GetRoomResponse{
 		// TODO: Room: toProtoRoom(room)を返却する
+		Room: toProtoRoom(room),
 	}), nil
 }
 
 func (s *server) ListRoom(ctx context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[proto.ListRoomResponse], error) {
 	// TODO: s.chatInteracter.ListRoomを実行する
+	rooms, err := s.chatInteractor.ListRoom(ctx)
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "list room error", "err", err)
+		return nil, err
+	}
 	return connect.NewResponse(&proto.ListRoomResponse{
 		// TODO: Rooms: toProtoRooms(rooms)を返却する
+		Rooms: toProtoRooms(rooms),
 	}), nil
 }
 
@@ -67,16 +85,22 @@ func (s *server) GetPass(ctx context.Context, _ *connect.Request[emptypb.Empty])
 }
 
 func (s *server) JoinRoom(ctx context.Context, req *connect.Request[proto.JoinRoomRequest], stream *connect.ServerStream[proto.JoinRoomResponse]) error {
-	var room *entity.Room
 	// TODO: room := s.chatInteracter.GetRoomを実行する
+	room, err := s.chatInteractor.GetRoom(ctx, req.Msg.GetRoomId())
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "get room error", "err", err)
+		return nil
+	}
 	st := &Stream{}
 	// TODO: st := s.getStream(room.ID, req.Msg.GetPass())を実行する
+	st = s.getStream(room.ID, req.Msg.GetPass())
 	if st == nil {
 		st = &Stream{
 			pbStream: stream,
 			close:    make(chan struct{}),
 		}
 		// TODO: s.addStream(room.ID, req.Msg.GetPass(), st)を実行する
+		s.addStream(room.ID, req.Msg.GetPass(), st)
 		defer func() {
 			s.deleteStream(room.ID, req.Msg.GetPass())
 			s.logger.InfoCtx(ctx, "delete stream", "stream id", req.Msg.GetPass())
@@ -92,8 +116,11 @@ func (s *server) JoinRoom(ctx context.Context, req *connect.Request[proto.JoinRo
 }
 
 func (s *server) LeaveRoom(ctx context.Context, req *connect.Request[proto.LeaveRoomRequest]) (*connect.Response[emptypb.Empty], error) {
-	st := &Stream{}
 	// TODO: st := s.getStream(req.Msg.GetRoomId(), req.Msg.GetPass())を実行する
+	st := s.getStream(req.Msg.GetRoomId(), req.Msg.GetPass())
+	if st == nil {
+		return &connect.Response[emptypb.Empty]{}, nil
+	}
 	st.close <- struct{}{}
 	close(st.close)
 	return &connect.Response[emptypb.Empty]{}, nil
@@ -101,15 +128,24 @@ func (s *server) LeaveRoom(ctx context.Context, req *connect.Request[proto.Leave
 
 func (s *server) ListMessage(ctx context.Context, req *connect.Request[proto.ListMessageRequest]) (*connect.Response[proto.ListMessageResponse], error) {
 	// TODO: s.chatInteracter.ListMessageを実行する
+	messages, err := s.chatInteractor.ListMessage(ctx, req.Msg.RoomId)
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "list message error", "err", err)
+		return nil, err
+	}
 	return &connect.Response[proto.ListMessageResponse]{Msg: &proto.ListMessageResponse{
 		// TODO: Messages: toProtoMessages(messages)を返却する
+		Messages: toProtoMessages(messages),
 	}}, nil
 }
 
 func (s *server) Chat(ctx context.Context, req *connect.Request[proto.ChatRequest]) (*connect.Response[proto.ChatResponse], error) {
-	var room *entity.Room
 	// TODO: room := s.chatInteracter.GetRoomを実行する
-
+	room, err := s.chatInteractor.GetRoom(ctx, req.Msg.GetMessage().GetRoomId())
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "get room error", "err", err)
+		return nil, err
+	}
 	if err := s.chatInteractor.SendMessage(ctx, req.Msg.GetMessage().GetRoomId(), req.Msg.GetMessage().GetText()); err != nil {
 		s.logger.ErrorCtx(ctx, "send message error", "err", err)
 		return nil, err
@@ -124,6 +160,14 @@ func (s *server) Chat(ctx context.Context, req *connect.Request[proto.ChatReques
 		_ = st
 		eg.Go(func() error {
 			// TODO: st.pbStream.Sendを実行する
+			if err := st.pbStream.Send(&proto.JoinRoomResponse{
+				Message: &proto.Message{
+					RoomId: req.Msg.GetMessage().GetRoomId(),
+					Text:   req.Msg.GetMessage().GetText(),
+				},
+			}); err != nil {
+				return err
+			}
 			return nil
 		})
 	}
@@ -134,6 +178,7 @@ func (s *server) Chat(ctx context.Context, req *connect.Request[proto.ChatReques
 
 	return connect.NewResponse(&proto.ChatResponse{
 		// TODO: Message: req.Msg.GetMessage()を返却する
+		Message: req.Msg.GetMessage(),
 	}), nil
 }
 

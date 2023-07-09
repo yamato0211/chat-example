@@ -2,6 +2,7 @@ package healthz
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bufbuild/connect-go"
 
@@ -21,5 +22,8 @@ func New(logger log.Handler) protoconnect.HealthzHandler {
 }
 
 func (s *server) Check(ctx context.Context, req *connect.Request[proto.CheckRequest]) (*connect.Response[proto.CheckResponse], error) {
-	return nil, nil
+	s.logger.InfoCtx(ctx, "healthz check", "name", req.Msg.GetName())
+	return connect.NewResponse(&proto.CheckResponse{
+		Msg: fmt.Sprintf("Hello %s", req.Msg.Name),
+	}), nil
 }

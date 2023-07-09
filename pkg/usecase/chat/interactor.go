@@ -5,9 +5,11 @@ package chat
 import (
 	"context"
 
+	"github.com/sivchari/chat-example/pkg/codes"
 	"github.com/sivchari/chat-example/pkg/domain/entity"
 	messagerepository "github.com/sivchari/chat-example/pkg/domain/repository/message"
 	roomrepository "github.com/sivchari/chat-example/pkg/domain/repository/room"
+	"github.com/sivchari/chat-example/pkg/errors"
 	"github.com/sivchari/chat-example/pkg/ulid"
 )
 
@@ -39,15 +41,41 @@ func New(
 }
 
 func (i *interactor) CreateRoom(ctx context.Context, name string) (*entity.Room, error) {
-	return nil, nil
+	if name == "" {
+		return nil, errors.New(codes.CodeInvalidArgument, "name is required")
+	}
+	id, err := i.ulidGenerator.Generate()
+	if err != nil {
+		return nil, err
+	}
+	room := &entity.Room{
+		ID:   id,
+		Name: name,
+	}
+	if err := i.roomRepository.Insert(ctx, room); err != nil {
+		return nil, err
+	}
+
+	return room, nil
 }
 
 func (i *interactor) ListRoom(ctx context.Context) ([]*entity.Room, error) {
-	return nil, nil
+	rooms, err := i.roomRepository.SelectAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rooms, nil
 }
 
 func (i *interactor) GetRoom(ctx context.Context, id string) (*entity.Room, error) {
-	return nil, nil
+	if id == "" {
+		return nil, errors.New(codes.CodeInvalidArgument, "roomID is required")
+	}
+	room, err := i.roomRepository.Select(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return room, nil
 }
 
 func (i *interactor) GetPass(_ context.Context) (string, error) {
@@ -59,9 +87,29 @@ func (i *interactor) GetPass(_ context.Context) (string, error) {
 }
 
 func (i *interactor) SendMessage(ctx context.Context, roomID, text string) error {
+	if roomID == "" {
+		return errors.New(codes.CodeInvalidArgument, "roomID is required")
+	}
+	if text == "" {
+		return errors.New(codes.CodeInvalidArgument, "text is required")
+	}
+	message := &entity.Message{
+		RoomID: roomID,
+		Text:   text,
+	}
+	if err := i.messageRepository.Insert(ctx, message); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (i *interactor) ListMessage(ctx context.Context, roomID string) ([]*entity.Message, error) {
-	return nil, nil
+	if roomID == "" {
+		return nil, errors.New(codes.CodeInvalidArgument, "roomID is required")
+	}
+	messages, err := i.messageRepository.SelectByRoomID(ctx, roomID)
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
